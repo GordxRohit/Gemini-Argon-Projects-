@@ -1,0 +1,2106 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GordXRohit Sanctuary — Interactive 3D WebGL Pond</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
+        }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #032229;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            touch-action: none;
+        }
+        #canvas-container {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        /* Translucent Glassmorphism Panels */
+        .glass-panel {
+            background: rgba(8, 36, 44, 0.62);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(165, 243, 252, 0.22);
+            box-shadow: 0 12px 40px rgba(0, 12, 18, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+        .ctrl-btn {
+            background: rgba(12, 48, 58, 0.65);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(165, 243, 252, 0.22);
+            color: #ecfeff;
+            transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 4px 16px rgba(0, 10, 15, 0.35);
+        }
+        .ctrl-btn:hover {
+            background: rgba(20, 72, 86, 0.8);
+            border-color: rgba(165, 243, 252, 0.5);
+            transform: translateY(-1px);
+        }
+        .ctrl-btn:active {
+            transform: translateY(1px) scale(0.97);
+        }
+        .ctrl-btn.active {
+            background: linear-gradient(135deg, rgba(6, 182, 212, 0.85), rgba(14, 116, 144, 0.9));
+            border-color: rgba(165, 243, 252, 0.85);
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.45);
+            color: #ffffff;
+        }
+        .koi-card {
+            background: rgba(13, 52, 63, 0.55);
+            border: 1px solid rgba(165, 243, 252, 0.18);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: grab;
+        }
+        .koi-card:hover {
+            background: rgba(22, 78, 94, 0.75);
+            border-color: rgba(165, 243, 252, 0.55);
+            transform: translateY(-4px);
+            box-shadow: 0 10px 25px rgba(0, 15, 22, 0.45);
+        }
+        .koi-card:active {
+            cursor: grabbing;
+            transform: translateY(-1px) scale(0.98);
+        }
+        /* Floating drag ghost */
+        #drag-ghost {
+            position: fixed;
+            pointer-events: none;
+            z-index: 100;
+            width: 84px;
+            height: 84px;
+            transform: translate(-50%, -50%) scale(0.8);
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            filter: drop-shadow(0 12px 18px rgba(0, 20, 28, 0.65));
+        }
+        #drag-ghost.visible {
+            opacity: 0.95;
+            transform: translate(-50%, -50%) scale(1.1);
+        }
+        .ui-transition {
+            transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .ui-hidden {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(16px);
+        }
+        .ui-hidden-top {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(-16px);
+        }
+        @keyframes pulse-ring {
+            0% { transform: scale(0.92); opacity: 0.8; }
+            70% { transform: scale(1.25); opacity: 0; }
+            100% { transform: scale(1.25); opacity: 0; }
+        }
+        .pulse-indicator::after {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 9999px;
+            border: 2px solid #67e8f9;
+            animation: pulse-ring 2s infinite;
+        }
+    </style>
+</head>
+<body class="relative select-none overflow-hidden text-cyan-50">
+
+    <!-- WebGL 3D Pond Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Top Bar: Title, Fish Counter, and Environment Controls -->
+    <header id="top-ui" class="ui-transition fixed top-0 left-0 right-0 z-20 p-3 sm:p-5 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+        <!-- Brand & Live Pond Stats -->
+        <div class="glass-panel pointer-events-auto rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 flex items-center gap-3">
+            <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-cyan-400/30 to-teal-600/30 border border-cyan-300/30 flex items-center justify-center shadow-inner">
+                <svg class="w-5 h-5 text-cyan-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 4a2 2 0 0 0 2 2a2 2 0 0 0 -2 2a2 2 0 0 0 -2 -2a2 2 0 0 0 2 -2" />
+                </svg>
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-xs sm:text-sm font-semibold tracking-wide text-cyan-50">GordXRohit Sanctuary</h1>
+                    <span id="fish-count-badge" class="text-[11px] font-medium px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-300/30 text-cyan-200">8 Koi</span>
+                </div>
+                <p id="hint-text" class="text-[10px] sm:text-xs text-cyan-200/75 hidden sm:block">Drag across water for ripples • Click or drag a Koi card to release</p>
+            </div>
+        </div>
+
+        <!-- Interactive Control Toolbar -->
+        <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 pointer-events-auto">
+            <!-- Sound Toggle Button -->
+            <button id="btn-sound" class="ctrl-btn relative rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-medium flex items-center gap-1.5" title="Toggle Web Audio Soundscape">
+                <svg id="icon-sound-off" class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                </svg>
+                <svg id="icon-sound-on" class="w-4 h-4 text-cyan-100 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+                <span id="label-sound">Sound Off</span>
+            </button>
+
+            <!-- Rain Toggle Button -->
+            <button id="btn-rain" class="ctrl-btn rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-medium flex items-center gap-1.5" title="Toggle Rain Shower">
+                <svg class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 19v2m4-2v2m4-2v2" />
+                </svg>
+                <span>Rain</span>
+            </button>
+
+            <!-- Whirlpool Toggle Button -->
+            <button id="btn-whirlpool" class="ctrl-btn rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-medium flex items-center gap-1.5" title="Toggle Movable Whirlpool">
+                <svg class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Whirlpool</span>
+            </button>
+
+            <!-- Calm Water Button -->
+            <button id="btn-calm" class="ctrl-btn rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-medium flex items-center gap-1.5" title="Stop Rain, Whirlpool & Ripples">
+                <svg class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+                <span>Calm</span>
+            </button>
+
+            <!-- Clear Pond Button -->
+            <button id="btn-clear" class="ctrl-btn rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-medium flex items-center gap-1.5" title="Remove All Koi from Pond">
+                <svg class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span class="hidden sm:inline">Clear Pond</span>
+                <span class="sm:hidden">Clear</span>
+            </button>
+
+            <!-- Hide Interface Button (for Screen Recording) -->
+            <button id="btn-hide-ui" class="ctrl-btn rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 text-xs sm:text-sm font-medium flex items-center gap-1.5" title="Hide UI for Screen Recording">
+                <svg class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                <span class="hidden md:inline">Hide UI</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Restore UI Floating Button (Only visible when UI is hidden for recording) -->
+    <button id="btn-restore-ui" class="fixed top-4 right-4 z-30 ctrl-btn rounded-full px-3.5 py-2 text-xs font-medium flex items-center gap-1.5 opacity-0 pointer-events-none transition-opacity duration-300 hover:!opacity-100">
+        <svg class="w-4 h-4 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+        <span>Show UI</span>
+    </button>
+
+    <!-- Status Toast for Whirlpool / Drag Hint -->
+    <div id="status-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-20 pointer-events-none opacity-0 transition-opacity duration-300">
+        <div class="glass-panel rounded-full px-4 py-1.5 text-xs font-medium text-cyan-100 shadow-lg flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-cyan-300 animate-ping"></span>
+            <span id="status-toast-text">Drag the whirlpool center to move the current</span>
+        </div>
+    </div>
+
+    <!-- Bottom Translucent Koi Selection Panel -->
+    <section id="bottom-ui" class="ui-transition fixed bottom-3 sm:bottom-5 left-1/2 -translate-x-1/2 z-20 w-[95%] max-w-2xl pointer-events-none">
+        <div class="glass-panel pointer-events-auto rounded-3xl p-2.5 sm:p-3.5">
+            <div class="flex items-center justify-between px-2 mb-2">
+                <span class="text-[11px] sm:text-xs font-medium uppercase tracking-wider text-cyan-200/80">Select or Drag Koi to Release</span>
+                <span class="text-[11px] text-cyan-200/60">Click to drop • Drag to aim</span>
+            </div>
+            <div class="grid grid-cols-4 gap-2 sm:gap-3">
+                <!-- Card 1: Kohaku -->
+                <div class="koi-card rounded-2xl p-2 sm:p-3 flex flex-col items-center text-center relative group" data-variety="kohaku">
+                    <div class="w-10 h-12 sm:w-12 sm:h-14 flex items-center justify-center mb-1 pointer-events-none">
+                        <svg viewBox="0 0 64 90" class="w-full h-full drop-shadow-md">
+                            <!-- Fins -->
+                            <ellipse cx="18" cy="36" rx="9" ry="5" transform="rotate(-30 18 36)" fill="#ffffff" opacity="0.85"/>
+                            <ellipse cx="46" cy="36" rx="9" ry="5" transform="rotate(30 46 36)" fill="#ffffff" opacity="0.85"/>
+                            <!-- Tail -->
+                            <path d="M32 64 L20 85 Q32 79 44 85 Z" fill="#fff5f2" opacity="0.9"/>
+                            <!-- Body -->
+                            <path d="M32 6 C44 12 45 34 39 54 C35 66 33 70 32 72 C31 70 29 66 25 54 C19 34 20 12 32 6 Z" fill="#f8fafc"/>
+                            <!-- Kohaku Red Hi Markings -->
+                            <path d="M32 10 C39 14 40 26 35 32 C29 36 24 27 26 16 C27 12 30 10 32 10 Z" fill="#ef3b24"/>
+                            <path d="M27 42 C33 39 39 44 37 54 C35 60 29 59 27 52 Z" fill="#ef3b24"/>
+                            <!-- Eyes -->
+                            <circle cx="25.5" cy="14" r="1.6" fill="#0f172a"/>
+                            <circle cx="38.5" cy="14" r="1.6" fill="#0f172a"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs sm:text-sm font-semibold text-white pointer-events-none">Kohaku</span>
+                    <span class="text-[10px] text-cyan-200/70 hidden sm:inline pointer-events-none">Red & White</span>
+                </div>
+
+                <!-- Card 2: Showa -->
+                <div class="koi-card rounded-2xl p-2 sm:p-3 flex flex-col items-center text-center relative group" data-variety="showa">
+                    <div class="w-10 h-12 sm:w-12 sm:h-14 flex items-center justify-center mb-1 pointer-events-none">
+                        <svg viewBox="0 0 64 90" class="w-full h-full drop-shadow-md">
+                            <ellipse cx="18" cy="36" rx="9" ry="5" transform="rotate(-30 18 36)" fill="#1e293b" opacity="0.85"/>
+                            <ellipse cx="46" cy="36" rx="9" ry="5" transform="rotate(30 46 36)" fill="#f8fafc" opacity="0.85"/>
+                            <path d="M32 64 L20 85 Q32 79 44 85 Z" fill="#ef4444" opacity="0.9"/>
+                            <path d="M32 6 C44 12 45 34 39 54 C35 66 33 70 32 72 C31 70 29 66 25 54 C19 34 20 12 32 6 Z" fill="#f8fafc"/>
+                            <!-- Red & Black Sumi Markings -->
+                            <path d="M25 14 C34 11 41 18 38 29 C34 35 24 28 25 14 Z" fill="#ef3b24"/>
+                            <path d="M23 26 C31 24 36 33 31 44 C26 48 21 37 23 26 Z" fill="#111827"/>
+                            <path d="M33 41 C40 43 40 53 34 61 C30 58 29 46 33 41 Z" fill="#ef3b24"/>
+                            <path d="M26 50 C32 51 35 61 31 67 C28 64 25 56 26 50 Z" fill="#111827"/>
+                            <circle cx="25.5" cy="14" r="1.6" fill="#0f172a"/>
+                            <circle cx="38.5" cy="14" r="1.6" fill="#0f172a"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs sm:text-sm font-semibold text-white pointer-events-none">Showa</span>
+                    <span class="text-[10px] text-cyan-200/70 hidden sm:inline pointer-events-none">Tri-Color</span>
+                </div>
+
+                <!-- Card 3: Golden Ogon -->
+                <div class="koi-card rounded-2xl p-2 sm:p-3 flex flex-col items-center text-center relative group" data-variety="ogon">
+                    <div class="w-10 h-12 sm:w-12 sm:h-14 flex items-center justify-center mb-1 pointer-events-none">
+                        <svg viewBox="0 0 64 90" class="w-full h-full drop-shadow-md">
+                            <defs>
+                                <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#fde047"/>
+                                    <stop offset="55%" stop-color="#f59e0b"/>
+                                    <stop offset="100%" stop-color="#d97706"/>
+                                </linearGradient>
+                            </defs>
+                            <ellipse cx="18" cy="36" rx="9" ry="5" transform="rotate(-30 18 36)" fill="#fde047" opacity="0.85"/>
+                            <ellipse cx="46" cy="36" rx="9" ry="5" transform="rotate(30 46 36)" fill="#fde047" opacity="0.85"/>
+                            <path d="M32 64 L20 85 Q32 79 44 85 Z" fill="#fbbf24" opacity="0.9"/>
+                            <path d="M32 6 C44 12 45 34 39 54 C35 66 33 70 32 72 C31 70 29 66 25 54 C19 34 20 12 32 6 Z" fill="url(#goldGrad)"/>
+                            <circle cx="25.5" cy="14" r="1.6" fill="#0f172a"/>
+                            <circle cx="38.5" cy="14" r="1.6" fill="#0f172a"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs sm:text-sm font-semibold text-white pointer-events-none">Golden Ogon</span>
+                    <span class="text-[10px] text-cyan-200/70 hidden sm:inline pointer-events-none">Metallic Gold</span>
+                </div>
+
+                <!-- Card 4: Platinum -->
+                <div class="koi-card rounded-2xl p-2 sm:p-3 flex flex-col items-center text-center relative group" data-variety="platinum">
+                    <div class="w-10 h-12 sm:w-12 sm:h-14 flex items-center justify-center mb-1 pointer-events-none">
+                        <svg viewBox="0 0 64 90" class="w-full h-full drop-shadow-md">
+                            <defs>
+                                <linearGradient id="platGrad" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#ffffff"/>
+                                    <stop offset="60%" stop-color="#e2e8f0"/>
+                                    <stop offset="100%" stop-color="#94a3b8"/>
+                                </linearGradient>
+                            </defs>
+                            <ellipse cx="18" cy="36" rx="9" ry="5" transform="rotate(-30 18 36)" fill="#ffffff" opacity="0.9"/>
+                            <ellipse cx="46" cy="36" rx="9" ry="5" transform="rotate(30 46 36)" fill="#ffffff" opacity="0.9"/>
+                            <path d="M32 64 L20 85 Q32 79 44 85 Z" fill="#f1f5f9" opacity="0.95"/>
+                            <path d="M32 6 C44 12 45 34 39 54 C35 66 33 70 32 72 C31 70 29 66 25 54 C19 34 20 12 32 6 Z" fill="url(#platGrad)"/>
+                            <circle cx="25.5" cy="14" r="1.6" fill="#0f172a"/>
+                            <circle cx="38.5" cy="14" r="1.6" fill="#0f172a"/>
+                        </svg>
+                    </div>
+                    <span class="text-xs sm:text-sm font-semibold text-white pointer-events-none">Platinum</span>
+                    <span class="text-[10px] text-cyan-200/70 hidden sm:inline pointer-events-none">Silvery White</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Floating SVG Ghost for Drag-and-Drop Koi Placement -->
+    <div id="drag-ghost"></div>
+
+    <script>
+        /***********************************************************************
+         * 1. WEB AUDIO SYNTHESIS ENGINE
+         * Generates landing splashes, musical pentatonic droplets, gentle ambient
+         * swimming water sounds, rain shower patter, and whirlpool vortex hum.
+         ***********************************************************************/
+        class PondAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.enabled = false;
+                this.masterGain = null;
+                this.ambientGain = null;
+                this.rainGain = null;
+                this.whirlpoolGain = null;
+                this.whirlpoolFilter = null;
+                this.noiseBuffer = null;
+                this.rainDropTimer = null;
+                // Pentatonic frequencies (C5, D5, E5, G5, A5, C6, D6, E6)
+                this.pentatonic = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51];
+            }
+
+            init() {
+                if (this.ctx) return;
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                this.ctx = new AudioCtx();
+
+                // Master gain for smooth fade on mute/unmute
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.gain.setValueAtTime(0.0001, this.ctx.currentTime);
+                this.masterGain.connect(this.ctx.destination);
+
+                // Create reusable 3-second white/pink noise buffer
+                const sampleRate = this.ctx.sampleRate;
+                const length = sampleRate * 3;
+                this.noiseBuffer = this.ctx.createBuffer(1, length, sampleRate);
+                const data = this.noiseBuffer.getChannelData(0);
+                let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+                for (let i = 0; i < length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    b0 = 0.99886 * b0 + white * 0.0555179;
+                    b1 = 0.99332 * b1 + white * 0.0750759;
+                    b2 = 0.96900 * b2 + white * 0.1538520;
+                    b3 = 0.86650 * b3 + white * 0.3104856;
+                    b4 = 0.55000 * b4 + white * 0.5329522;
+                    b5 = -0.7616 * b5 - white * 0.0168980;
+                    data[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.04;
+                    b6 = white * 0.115926;
+                }
+
+                this.setupAmbientWater();
+                this.setupRainLoop();
+                this.setupWhirlpoolLoop();
+            }
+
+            setupAmbientWater() {
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.noiseBuffer;
+                src.loop = true;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 340;
+                filter.Q.value = 1.2;
+
+                // Subtle LFO modulating water movement frequency
+                const lfo = this.ctx.createOscillator();
+                const lfoGain = this.ctx.createGain();
+                lfo.frequency.value = 0.18;
+                lfoGain.gain.value = 95;
+                lfo.connect(filter.frequency);
+                lfo.start();
+
+                this.ambientGain = this.ctx.createGain();
+                this.ambientGain.gain.value = 0.16;
+
+                src.connect(filter);
+                filter.connect(this.ambientGain);
+                this.ambientGain.connect(this.masterGain);
+                src.start();
+            }
+
+            setupRainLoop() {
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.noiseBuffer;
+                src.loop = true;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.value = 1950;
+                filter.Q.value = 0.65;
+
+                this.rainGain = this.ctx.createGain();
+                this.rainGain.gain.value = 0.0001;
+
+                src.connect(filter);
+                filter.connect(this.rainGain);
+                this.rainGain.connect(this.masterGain);
+                src.start();
+            }
+
+            setupWhirlpoolLoop() {
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.noiseBuffer;
+                src.loop = true;
+
+                this.whirlpoolFilter = this.ctx.createBiquadFilter();
+                this.whirlpoolFilter.type = 'lowpass';
+                this.whirlpoolFilter.frequency.value = 210;
+                this.whirlpoolFilter.Q.value = 4.5;
+
+                // Swirling LFO on the whirlpool filter
+                const lfo = this.ctx.createOscillator();
+                const lfoGain = this.ctx.createGain();
+                lfo.frequency.value = 1.4;
+                lfoGain.gain.value = 65;
+                lfo.connect(lfoGain);
+                lfoGain.connect(this.whirlpoolFilter.frequency);
+                lfo.start();
+
+                this.whirlpoolGain = this.ctx.createGain();
+                this.whirlpoolGain.gain.value = 0.0001;
+
+                src.connect(this.whirlpoolFilter);
+                this.whirlpoolFilter.connect(this.whirlpoolGain);
+                this.whirlpoolGain.connect(this.masterGain);
+                src.start();
+            }
+
+            toggleSound(forceState) {
+                this.init();
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+                this.enabled = forceState !== undefined ? forceState : !this.enabled;
+                const now = this.ctx.currentTime;
+                this.masterGain.gain.cancelScheduledValues(now);
+                this.masterGain.gain.setValueAtTime(Math.max(0.0001, this.masterGain.gain.value), now);
+                if (this.enabled) {
+                    this.masterGain.gain.exponentialRampToValueAtTime(0.85, now + 0.45);
+                    this.playDropletChime(0.4);
+                } else {
+                    this.masterGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.4);
+                }
+                return this.enabled;
+            }
+
+            setTabHidden(hidden) {
+                if (!this.ctx || !this.enabled) return;
+                const now = this.ctx.currentTime;
+                this.masterGain.gain.cancelScheduledValues(now);
+                if (hidden) {
+                    this.masterGain.gain.setTargetAtTime(0.0001, now, 0.15);
+                } else {
+                    if (this.ctx.state === 'suspended') this.ctx.resume();
+                    this.masterGain.gain.setTargetAtTime(0.85, now, 0.25);
+                }
+            }
+
+            setRainActive(active) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.rainGain.gain.cancelScheduledValues(now);
+                this.rainGain.gain.setTargetAtTime(active ? 0.35 : 0.0001, now, 0.5);
+            }
+
+            setWhirlpoolActive(active) {
+                if (!this.ctx) return;
+                const now = this.ctx.currentTime;
+                this.whirlpoolGain.gain.cancelScheduledValues(now);
+                this.whirlpoolGain.gain.setTargetAtTime(active ? 0.65 : 0.0001, now, 0.45);
+            }
+
+            // Satisfying landing splash + bubble plop + soft musical droplet
+            playLandingSplash(intensity = 1.0) {
+                if (!this.ctx || !this.enabled) return;
+                const now = this.ctx.currentTime;
+
+                // 1. Filtered noise splash burst
+                const splashSrc = this.ctx.createBufferSource();
+                splashSrc.buffer = this.noiseBuffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(420, now);
+                filter.frequency.exponentialRampToValueAtTime(1550, now + 0.14);
+                filter.frequency.exponentialRampToValueAtTime(280, now + 0.55);
+                filter.Q.value = 1.8;
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.001, now);
+                gain.gain.linearRampToValueAtTime(0.55 * intensity, now + 0.03);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.58);
+
+                splashSrc.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+                splashSrc.start(now);
+                splashSrc.stop(now + 0.6);
+
+                // 2. Deep water cavity plop (sine pitch bend upward)
+                const osc = this.ctx.createOscillator();
+                const plopGain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(135, now + 0.04);
+                osc.frequency.exponentialRampToValueAtTime(490, now + 0.22);
+
+                plopGain.gain.setValueAtTime(0.001, now + 0.04);
+                plopGain.gain.linearRampToValueAtTime(0.32 * intensity, now + 0.07);
+                plopGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.26);
+
+                osc.connect(plopGain);
+                plopGain.connect(this.masterGain);
+                osc.start(now + 0.04);
+                osc.stop(now + 0.28);
+
+                // 3. Soft musical droplet notes
+                this.playDropletChime(0.32 * intensity, 0.12);
+                setTimeout(() => this.playDropletChime(0.22 * intensity, 0), 140);
+            }
+
+            playDropletChime(volume = 0.25, delay = 0) {
+                if (!this.ctx || !this.enabled) return;
+                const now = this.ctx.currentTime + delay;
+                const freq = this.pentatonic[Math.floor(Math.random() * this.pentatonic.length)];
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq * 0.98, now);
+                osc.frequency.exponentialRampToValueAtTime(freq, now + 0.04);
+
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.linearRampToValueAtTime(volume * 0.22, now + 0.015);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.65);
+
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start(now);
+                osc.stop(now + 0.7);
+            }
+
+            playSwimSwish(intensity = 0.2) {
+                if (!this.ctx || !this.enabled) return;
+                const now = this.ctx.currentTime;
+                const src = this.ctx.createBufferSource();
+                src.buffer = this.noiseBuffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'bandpass';
+                filter.frequency.setValueAtTime(320 + Math.random() * 220, now);
+                filter.Q.value = 2.5;
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.0001, now);
+                gain.gain.linearRampToValueAtTime(0.08 * intensity, now + 0.06);
+                gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+
+                src.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+                src.start(now);
+                src.stop(now + 0.3);
+            }
+        }
+
+        const audioEngine = new PondAudioEngine();
+    </script>
+
+    <script>
+        /***********************************************************************
+         * 2. PROCEDURAL KOI SCALE & VARIETY TEXTURE GENERATOR
+         * Builds high-resolution procedural textures for Kohaku, Showa, Ogon,
+         * and Platinum koi with overlapping crescent scales and organic markings.
+         ***********************************************************************/
+        function createKoiTexture(variety) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Base body color
+            if (variety === 'ogon') {
+                const grad = ctx.createLinearGradient(0, 0, 512, 512);
+                grad.addColorStop(0, '#fde047');
+                grad.addColorStop(0.5, '#f59e0b');
+                grad.addColorStop(1, '#d97706');
+                ctx.fillStyle = grad;
+            } else if (variety === 'platinum') {
+                const grad = ctx.createLinearGradient(0, 0, 512, 512);
+                grad.addColorStop(0, '#ffffff');
+                grad.addColorStop(0.6, '#e2e8f0');
+                grad.addColorStop(1, '#cbd5e1');
+                ctx.fillStyle = grad;
+            } else {
+                // Kohaku and Showa have warm porcelain-white skin base
+                ctx.fillStyle = '#fff9f5';
+            }
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Organic Hi (red-orange) and Sumi (ink black) markings for Kohaku & Showa
+            const drawOrganicPatch = (cx, cy, rx, ry, color, seed) => {
+                ctx.save();
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                const steps = 32;
+                for (let i = 0; i <= steps; i++) {
+                    const angle = (i / steps) * Math.PI * 2;
+                    const wobble = 1 + 0.16 * Math.sin(angle * 3 + seed) + 0.1 * Math.cos(angle * 5 - seed);
+                    const x = cx + Math.cos(angle) * rx * wobble;
+                    const y = cy + Math.sin(angle) * ry * wobble;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fill();
+                ctx.restore();
+            };
+
+            if (variety === 'kohaku') {
+                // Classic vibrant red-orange dorsal patches
+                drawOrganicPatch(256, 105, 115, 72, '#ea3318', 1.2);
+                drawOrganicPatch(245, 255, 105, 85, '#e62e14', 2.7);
+                drawOrganicPatch(265, 395, 85, 55, '#ea3318', 4.1);
+            } else if (variety === 'showa') {
+                // Rich crimson Hi patches + bold black Sumi ink patches
+                drawOrganicPatch(240, 115, 120, 75, '#e12d13', 0.8);
+                drawOrganicPatch(275, 290, 115, 85, '#e12d13', 3.4);
+                drawOrganicPatch(270, 175, 105, 65, '#14171f', 2.1);
+                drawOrganicPatch(225, 345, 95, 70, '#14171f', 5.2);
+                drawOrganicPatch(256, 65, 65, 38, '#14171f', 4.0);
+            }
+
+            // Overlay realistic imbricated (overlapping) fish scales
+            const rows = 28;
+            const cols = 18;
+            const rowH = 512 / rows;
+            const colW = 512 / cols;
+
+            for (let r = 0; r < rows; r++) {
+                // Fade scales near the head (top of texture) and very tip of tail
+                const headFade = Math.min(1, Math.max(0, (r - 4) / 4));
+                const tailFade = Math.min(1, Math.max(0, (rows - r) / 4));
+                const alpha = headFade * tailFade;
+                if (alpha <= 0.02) continue;
+
+                for (let c = 0; c <= cols; c++) {
+                    const x = c * colW + (r % 2 === 0 ? 0 : colW * 0.5);
+                    const y = r * rowH;
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(x, y, colW * 0.56, 0, Math.PI);
+                    if (variety === 'ogon') {
+                        ctx.strokeStyle = `rgba(255, 250, 205, ${0.42 * alpha})`;
+                        ctx.fillStyle = `rgba(217, 119, 6, ${0.14 * alpha})`;
+                    } else if (variety === 'platinum') {
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${0.55 * alpha})`;
+                        ctx.fillStyle = `rgba(148, 163, 184, ${0.14 * alpha})`;
+                    } else {
+                        ctx.strokeStyle = `rgba(15, 23, 42, ${0.13 * alpha})`;
+                        ctx.fillStyle = `rgba(255, 255, 255, ${0.09 * alpha})`;
+                    }
+                    ctx.lineWidth = 1.6;
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            // Soft lateral shading for 3D cylindrical volume
+            const sideGrad = ctx.createLinearGradient(0, 0, 512, 0);
+            sideGrad.addColorStop(0, 'rgba(0, 15, 25, 0.25)');
+            sideGrad.addColorStop(0.25, 'rgba(255, 255, 255, 0.08)');
+            sideGrad.addColorStop(0.5, 'rgba(255, 255, 255, 0.18)');
+            sideGrad.addColorStop(0.75, 'rgba(255, 255, 255, 0.08)');
+            sideGrad.addColorStop(1, 'rgba(0, 15, 25, 0.25)');
+            ctx.fillStyle = sideGrad;
+            ctx.fillRect(0, 0, 512, 512);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.ClampToEdgeWrapping;
+            tex.wrapT = THREE.ClampToEdgeWrapping;
+            tex.needsUpdate = true;
+            return tex;
+        }
+
+        /***********************************************************************
+         * 3. GLSL SHADERS FOR POND FLOOR CAUSTICS & WATER SURFACE REFRACTION
+         ***********************************************************************/
+        const MAX_RIPPLES = 32;
+
+        // Shared GLSL helper for Voronoi-style animated sunlight caustics
+        const CAUSTICS_GLSL = `
+            vec2 hash2(vec2 p) {
+                return fract(sin(vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)))) * 43758.5453);
+            }
+            float causticPattern(vec2 uv, float time) {
+                vec2 p = uv * 0.42;
+                float minDist1 = 1.0;
+                float minDist2 = 1.0;
+                vec2 i_st = floor(p);
+                vec2 f_st = fract(p);
+                for (int y = -1; y <= 1; y++) {
+                    for (int x = -1; x <= 1; x++) {
+                        vec2 neighbor = vec2(float(x), float(y));
+                        vec2 point = hash2(i_st + neighbor);
+                        point = 0.5 + 0.5 * sin(time * 1.35 + 6.2831 * point);
+                        vec2 diff = neighbor + point - f_st;
+                        float d = length(diff);
+                        if (d < minDist1) {
+                            minDist2 = minDist1;
+                            minDist1 = d;
+                        } else if (d < minDist2) {
+                            minDist2 = d;
+                        }
+                    }
+                }
+                float edge = clamp(1.0 - (minDist2 - minDist1) * 3.2, 0.0, 1.0);
+                return pow(edge, 2.6);
+            }
+        `;
+
+        // Pond Floor Vertex & Fragment Shader (pebbles + depth vignette + animated caustics + ripple distortion)
+        const floorVertexShader = `
+            varying vec2 vWorldXZ;
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                vWorldXZ = worldPos.xz;
+                gl_Position = projectionMatrix * viewMatrix * worldPos;
+            }
+        `;
+
+        const floorFragmentShader = `
+            uniform float uTime;
+            uniform vec4 uRipples[${MAX_RIPPLES}];
+            uniform vec3 uWhirlpool;
+            varying vec2 vWorldXZ;
+            varying vec2 vUv;
+
+            ${CAUSTICS_GLSL}
+
+            float noise2D(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                float a = fract(sin(dot(i, vec2(12.9898, 78.233))) * 43758.5453);
+                float b = fract(sin(dot(i + vec2(1.0, 0.0), vec2(12.9898, 78.233))) * 43758.5453);
+                float c = fract(sin(dot(i + vec2(0.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453);
+                float d = fract(sin(dot(i + vec2(1.0, 1.0), vec2(12.9898, 78.233))) * 43758.5453);
+                return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+            }
+
+            void main() {
+                // Compute refraction UV offset from active surface ripples and whirlpool
+                vec2 refractOffset = vec2(0.0);
+                for (int i = 0; i < ${MAX_RIPPLES}; i++) {
+                    vec4 rip = uRipples[i];
+                    if (rip.z > 0.0 && rip.w > 0.001) {
+                        float age = uTime - rip.z;
+                        if (age >= 0.0 && age < 4.5) {
+                            vec2 dir = vWorldXZ - rip.xy;
+                            float dist = length(dir);
+                            float radius = age * 4.8;
+                            float band = exp(-pow(dist - radius, 2.0) * 1.4);
+                            float wave = cos((dist - radius) * 7.5) * band * rip.w * exp(-age * 0.85);
+                            refractOffset += normalize(dir + vec2(0.0001)) * wave * 0.45;
+                        }
+                    }
+                }
+
+                // Whirlpool refraction twist on pond floor
+                if (uWhirlpool.z > 0.01) {
+                    vec2 wDir = vWorldXZ - uWhirlpool.xy;
+                    float wDist = length(wDir);
+                    float wInfluence = exp(-wDist * 0.28) * uWhirlpool.z;
+                    float angle = wInfluence * 2.4;
+                    float s = sin(angle);
+                    float c = cos(angle);
+                    refractOffset += vec2(wDir.x * c - wDir.y * s, wDir.x * s + wDir.y * c) * 0.15 * wInfluence;
+                }
+
+                vec2 pos = vWorldXZ + refractOffset;
+
+                // Subtle river stone / sandy bed texture
+                float n1 = noise2D(pos * 1.8);
+                float n2 = noise2D(pos * 6.5);
+                float pebble = smoothstep(0.35, 0.75, n1 * 0.65 + n2 * 0.35);
+
+                vec3 deepTeal = vec3(0.02, 0.24, 0.30);
+                vec3 turquoiseBed = vec3(0.06, 0.44, 0.50);
+                vec3 warmStone = vec3(0.11, 0.52, 0.56);
+
+                vec3 baseColor = mix(deepTeal, turquoiseBed, pebble);
+                baseColor = mix(baseColor, warmStone, n2 * 0.35);
+
+                // Dual-layer animated sunlight caustics
+                float c1 = causticPattern(pos + vec2(uTime * 0.18, uTime * 0.12), uTime);
+                float c2 = causticPattern(pos * 1.35 - vec2(uTime * 0.14, -uTime * 0.16), uTime * 1.1);
+                float caustics = (c1 * 0.65 + c2 * 0.55);
+
+                // Brighten caustics where ripples focus light
+                float rippleLight = clamp(length(refractOffset) * 2.2, 0.0, 0.45);
+                vec3 causticColor = vec3(0.55, 0.96, 0.98) * (caustics * 0.48 + rippleLight);
+
+                // Radial depth darkening near outer edges of the pond
+                float radialDist = length(vWorldXZ) * 0.042;
+                float vignette = clamp(1.0 - pow(radialDist, 1.8), 0.25, 1.0);
+
+                // Darken center slightly under active whirlpool funnel
+                if (uWhirlpool.z > 0.01) {
+                    float wDist = length(vWorldXZ - uWhirlpool.xy);
+                    vignette *= (1.0 - 0.45 * exp(-wDist * 0.65) * uWhirlpool.z);
+                }
+
+                vec3 finalColor = (baseColor + causticColor) * vignette;
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        `;
+
+        // Water Surface Vertex & Fragment Shader (ripples, landing depression, whirlpool funnel, sunlight specular)
+        const waterVertexShader = `
+            uniform float uTime;
+            uniform vec4 uRipples[${MAX_RIPPLES}];
+            uniform vec3 uWhirlpool;
+            varying vec3 vWorldPos;
+            varying vec3 vNormal;
+            varying float vWaveHeight;
+
+            // Compute height displacement at any XZ coordinate
+            float getSurfaceHeight(vec2 xz) {
+                float h = 0.0;
+                // Gentle natural pond surface swell
+                h += sin(xz.x * 0.55 + uTime * 1.4) * cos(xz.y * 0.5 + uTime * 1.1) * 0.035;
+                h += sin((xz.x + xz.y) * 0.9 - uTime * 1.8) * 0.018;
+
+                // Interactive ripples & landing depressions
+                for (int i = 0; i < ${MAX_RIPPLES}; i++) {
+                    vec4 rip = uRipples[i];
+                    if (rip.z > 0.0 && rip.w > 0.001) {
+                        float age = uTime - rip.z;
+                        if (age >= 0.0 && age < 4.5) {
+                            float dist = length(xz - rip.xy);
+                            float speed = 4.8;
+                            float radius = age * speed;
+                            // Expanding concentric wave rings
+                            float ring = exp(-pow(dist - radius, 2.0) * 1.65);
+                            float wave = sin((dist - radius) * 8.0) * ring * rip.w * exp(-age * 0.9);
+                            // Initial downward cavity depression when a koi lands on the surface
+                            float depression = -exp(-dist * 1.35) * exp(-age * 5.5) * rip.w * 1.65;
+                            h += wave + depression;
+                        }
+                    }
+                }
+
+                // Movable whirlpool vortex depression
+                if (uWhirlpool.z > 0.01) {
+                    vec2 wVec = xz - uWhirlpool.xy;
+                    float dist = length(wVec);
+                    float funnel = -1.35 * exp(-dist * 0.55) * uWhirlpool.z;
+                    float angle = atan(wVec.y, wVec.x);
+                    float spiral = sin(dist * 4.5 - uTime * 9.0 + angle * 3.0) * 0.09 * exp(-dist * 0.32) * uWhirlpool.z;
+                    h += funnel + spiral;
+                }
+                return h;
+            }
+
+            void main() {
+                vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                vec2 xz = worldPosition.xz;
+
+                float eps = 0.14;
+                float hCenter = getSurfaceHeight(xz);
+                float hRight  = getSurfaceHeight(xz + vec2(eps, 0.0));
+                float hForward = getSurfaceHeight(xz + vec2(0.0, eps));
+
+                worldPosition.y += hCenter;
+                vWorldPos = worldPosition.xyz;
+                vWaveHeight = hCenter;
+
+                // Finite difference normal for crisp specular sunlight & ripple highlights
+                vec3 tangentX = normalize(vec3(eps, hRight - hCenter, 0.0));
+                vec3 tangentZ = normalize(vec3(0.0, hForward - hCenter, eps));
+                vNormal = normalize(cross(tangentZ, tangentX));
+
+                gl_Position = projectionMatrix * viewMatrix * worldPosition;
+            }
+        `;
+
+        const waterFragmentShader = `
+            uniform float uTime;
+            uniform vec3 uCameraPos;
+            uniform vec3 uWhirlpool;
+            varying vec3 vWorldPos;
+            varying vec3 vNormal;
+            varying float vWaveHeight;
+
+            void main() {
+                vec3 N = normalize(vNormal);
+                vec3 V = normalize(uCameraPos - vWorldPos);
+                vec3 L = normalize(vec3(6.0, 22.0, 8.0));
+                vec3 H = normalize(L + V);
+
+                // Fresnel reflectance for clear turquoise water
+                float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.2);
+
+                // Sunlight glinting on wave crests and ripple rings
+                float spec1 = pow(max(dot(N, H), 0.0), 90.0) * 0.95;
+                float spec2 = pow(max(dot(N, H), 0.0), 24.0) * 0.22;
+
+                // Subtle foam/shimmer around active whirlpool core
+                float whirlFoam = 0.0;
+                if (uWhirlpool.z > 0.01) {
+                    vec2 wVec = vWorldPos.xz - uWhirlpool.xy;
+                    float dist = length(wVec);
+                    float angle = atan(wVec.y, wVec.x);
+                    float swirlBand = sin(dist * 5.5 - uTime * 10.0 + angle * 2.0) * 0.5 + 0.5;
+                    whirlFoam = exp(-dist * 0.48) * swirlBand * 0.42 * uWhirlpool.z;
+                }
+
+                vec3 waterTint = vec3(0.08, 0.68, 0.76);
+                vec3 skyReflect = vec3(0.62, 0.95, 0.99);
+                vec3 color = mix(waterTint, skyReflect, fresnel * 0.65);
+
+                // Highlight ripple ridges
+                float crestHighlight = smoothstep(0.02, 0.18, abs(vWaveHeight)) * 0.25;
+                color += vec3(0.75, 0.98, 1.0) * (spec1 + spec2 + crestHighlight + whirlFoam);
+
+                float alpha = clamp(0.22 + fresnel * 0.38 + spec1 * 0.6 + whirlFoam * 0.45, 0.18, 0.85);
+                gl_FragColor = vec4(color, alpha);
+            }
+        `;
+    </script>
+
+    <script>
+        /***********************************************************************
+         * 4. DETAILED 3D KOI MODEL & PROCEDURAL SWIMMING ANIMATION
+         * Creates sculptural 3D koi with tapered anatomy, eyes, dorsal fin,
+         * pectoral/ventral fins, and flowing bifurcated tail. Animates spine
+         * S-curves in the vertex shader + synchronized fin/tail motion.
+         ***********************************************************************/
+        const koiSharedGeometries = {};
+        const koiTextures = {};
+
+        function buildKoiBodyGeometry() {
+            // 32 axial rings along length (Z from +0.5 head to -0.5 tail base), 20 radial segments
+            const lengthSegs = 32;
+            const radialSegs = 20;
+            const geom = new THREE.CylinderGeometry(1, 1, 1, radialSegs, lengthSegs, false);
+            // Rotate cylinder so Y-axis becomes Z-axis (head at +Z, tail at -Z)
+            geom.rotateX(Math.PI / 2);
+
+            const pos = geom.attributes.position;
+            const uvs = geom.attributes.uv;
+
+            for (let i = 0; i < pos.count; i++) {
+                const x = pos.getX(i);
+                const y = pos.getY(i);
+                const z = pos.getZ(i);
+
+                // Normalized progress t from 0.0 (snout tip at z = +0.5) to 1.0 (tail peduncle at z = -0.5)
+                const t = 0.5 - z;
+
+                // Anatomical koi profile: rounded snout, plump shoulders at t=0.26, graceful taper to tail
+                let widthProfile;
+                if (t < 0.26) {
+                    widthProfile = Math.pow(t / 0.26, 0.52);
+                } else {
+                    widthProfile = Math.pow((1.0 - t) / 0.74, 0.78) * 0.92 + 0.08;
+                }
+
+                // Dorsal arch is slightly taller than belly
+                const heightProfile = widthProfile * (y > 0 ? 1.15 : 0.88);
+                const newX = x * 0.22 * widthProfile;
+                const newY = y * 0.20 * heightProfile + (Math.sin(t * Math.PI) * 0.025);
+                const newZ = (0.5 - t) * 1.45; // Total body length ~1.45 units
+
+                pos.setXYZ(i, newX, newY, newZ);
+
+                // Top-down planar UV mapping so dorsal patterns and scales wrap cleanly
+                const u = 0.5 + (x * 0.45);
+                const v = 1.0 - t;
+                uvs.setXY(i, u, v);
+            }
+
+            geom.computeVertexNormals();
+            return geom;
+        }
+
+        function buildTailFinGeometry() {
+            // Flowing forked caudal (tail) fin extending from z = 0 to z = -0.62
+            const geom = new THREE.PlaneGeometry(0.62, 0.58, 12, 12);
+            geom.rotateY(Math.PI / 2); // Align in YZ vertical plane
+            const pos = geom.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const zOrig = pos.getZ(i); // -0.31 to +0.31
+                const yOrig = pos.getY(i); // -0.29 to +0.29
+                // Shift so attachment is at z = 0 and fin flows backward to -0.62
+                const t = (0.31 - zOrig) / 0.62; // 0 at base, 1 at trailing edge
+                const spread = 0.25 + t * 0.85;
+                // V-notch indentation in the center of the trailing edge
+                const notch = Math.exp(-Math.pow(yOrig * 4.5, 2.0)) * t * 0.18;
+                const newZ = -t * 0.62 + notch;
+                const newY = yOrig * spread;
+                // Gentle billow curve
+                const newX = Math.sin(t * Math.PI) * 0.025;
+                pos.setXYZ(i, newX, newY, newZ);
+            }
+            geom.computeVertexNormals();
+            return geom;
+        }
+
+        function buildPectoralFinGeometry(isLeft) {
+            const sign = isLeft ? -1 : 1;
+            const geom = new THREE.PlaneGeometry(0.38, 0.24, 6, 6);
+            geom.rotateX(-Math.PI / 2);
+            const pos = geom.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                let x = pos.getX(i); // -0.19 to +0.19
+                let z = pos.getZ(i); // -0.12 to +0.12
+                const u = (x + 0.19) / 0.38; // 0 at body attachment, 1 at fin tip
+                const v = (z + 0.12) / 0.24;
+                // Fan out into graceful teardrop paddle shape
+                const outX = sign * u * 0.36;
+                const outZ = (v - 0.5) * (0.12 + Math.sin(u * Math.PI) * 0.18) - u * 0.12;
+                const outY = -Math.sin(u * Math.PI) * 0.03;
+                pos.setXYZ(i, outX, outY, outZ);
+            }
+            geom.computeVertexNormals();
+            return geom;
+        }
+
+        function buildDorsalFinGeometry() {
+            const geom = new THREE.PlaneGeometry(0.55, 0.18, 10, 4);
+            geom.rotateY(Math.PI / 2);
+            const pos = geom.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const z = pos.getZ(i);
+                const y = pos.getY(i);
+                const u = (0.275 - z) / 0.55; // 0 front, 1 back
+                const v = (y + 0.09) / 0.18;  // 0 base, 1 top edge
+                const arch = Math.sin(u * Math.PI);
+                pos.setXYZ(i, 0, v * 0.17 * arch, z - v * 0.08);
+            }
+            geom.computeVertexNormals();
+            return geom;
+        }
+
+        function initSharedKoiAssets() {
+            koiSharedGeometries.body = buildKoiBodyGeometry();
+            koiSharedGeometries.tail = buildTailFinGeometry();
+            koiSharedGeometries.pecLeft = buildPectoralFinGeometry(true);
+            koiSharedGeometries.pecRight = buildPectoralFinGeometry(false);
+            koiSharedGeometries.dorsal = buildDorsalFinGeometry();
+            koiSharedGeometries.eye = new THREE.SphereGeometry(0.032, 10, 10);
+            koiSharedGeometries.pupil = new THREE.SphereGeometry(0.019, 8, 8);
+            koiSharedGeometries.shadow = new THREE.PlaneGeometry(1.1, 2.2);
+            koiSharedGeometries.shadow.rotateX(-Math.PI / 2);
+
+            // Soft oval shadow texture for the pond floor
+            const shCanvas = document.createElement('canvas');
+            shCanvas.width = 128;
+            shCanvas.height = 256;
+            const sCtx = shCanvas.getContext('2d');
+            const grad = sCtx.createRadialGradient(64, 128, 8, 64, 128, 60);
+            grad.addColorStop(0, 'rgba(1, 18, 24, 0.52)');
+            grad.addColorStop(0.6, 'rgba(1, 22, 29, 0.22)');
+            grad.addColorStop(1, 'rgba(1, 22, 29, 0.0)');
+            sCtx.fillStyle = grad;
+            sCtx.fillRect(0, 0, 128, 256);
+            koiTextures.shadow = new THREE.CanvasTexture(shCanvas);
+
+            ['kohaku', 'showa', 'ogon', 'platinum'].forEach(v => {
+                koiTextures[v] = createKoiTexture(v);
+            });
+        }
+
+        // Inject real-time S-wave spine bending + submerged turquoise depth tint into Koi materials
+        function enhanceKoiMaterial(material, uniforms) {
+            material.onBeforeCompile = (shader) => {
+                shader.uniforms.uSwimPhase = uniforms.uSwimPhase;
+                shader.uniforms.uSwimAmp = uniforms.uSwimAmp;
+                shader.uniforms.uTurnBend = uniforms.uTurnBend;
+                shader.uniforms.uSubmergeDepth = uniforms.uSubmergeDepth;
+
+                shader.vertexShader = `
+                    uniform float uSwimPhase;
+                    uniform float uSwimAmp;
+                    uniform float uTurnBend;
+                    varying float vKoiDepth;
+                ` + shader.vertexShader;
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    // Spine progress from snout (0.0) to tail tip (1.6)
+                    float spineT = clamp((0.725 - transformed.z) / 1.45, 0.0, 1.8);
+                    float wave = sin(uSwimPhase - spineT * 4.4) * (0.03 + pow(spineT, 1.45) * 0.16) * uSwimAmp;
+                    float turnCurve = uTurnBend * pow(spineT, 1.6) * 0.35;
+                    transformed.x += wave + turnCurve;
+                    vec4 wp = modelMatrix * vec4(transformed, 1.0);
+                    vKoiDepth = max(0.0, -wp.y);
+                    `
+                );
+
+                shader.fragmentShader = `
+                    uniform float uSubmergeDepth;
+                    varying float vKoiDepth;
+                ` + shader.fragmentShader;
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <dithering_fragment>',
+                    `
+                    #include <dithering_fragment>
+                    // Realistic underwater light absorption & turquoise refraction tint by depth
+                    float depthFactor = clamp(vKoiDepth * 0.34, 0.0, 0.68);
+                    vec3 underwaterTint = vec3(0.05, 0.56, 0.66);
+                    gl_FragColor.rgb = mix(gl_FragColor.rgb, underwaterTint, depthFactor);
+                    `
+                );
+            };
+        }
+
+        class KoiFish {
+            constructor(variety, scene, x, z, isInitial = false) {
+                this.variety = variety;
+                this.scene = scene;
+
+                // Randomize scale slightly for organic variety
+                this.scale = 0.86 + Math.random() * 0.28;
+                this.position = new THREE.Vector3(x, isInitial ? -0.65 - Math.random() * 0.7 : 2.2, z);
+                this.targetDepth = -0.58 - Math.random() * 0.85;
+
+                const angle = Math.random() * Math.PI * 2;
+                this.heading = angle;
+                this.speed = 1.65 + Math.random() * 0.65;
+                this.baseSpeed = this.speed;
+                this.velocity = new THREE.Vector3(Math.sin(angle) * this.speed, 0, Math.cos(angle) * this.speed);
+
+                // Autonomous wandering & darting timers
+                this.wanderTimer = 1.5 + Math.random() * 3.5;
+                this.desiredHeading = angle;
+                this.turnRate = 0;
+
+                // Entry dive state when dropped from card
+                this.state = isInitial ? 'swimming' : 'dropping';
+                this.dropVelocityY = -4.8;
+                this.pitch = isInitial ? 0 : 0.65;
+
+                // Shader uniforms per fish for independent spine undulation
+                this.swimUniforms = {
+                    uSwimPhase: { value: Math.random() * Math.PI * 2 },
+                    uSwimAmp: { value: 1.0 },
+                    uTurnBend: { value: 0.0 },
+                    uSubmergeDepth: { value: 0.7 }
+                };
+
+                this.buildMesh();
+            }
+
+            buildMesh() {
+                this.group = new THREE.Group();
+                this.group.scale.setScalar(this.scale);
+
+                const isMetallic = (this.variety === 'ogon' || this.variety === 'platinum');
+                const bodyMat = new THREE.MeshStandardMaterial({
+                    map: koiTextures[this.variety],
+                    roughness: isMetallic ? 0.22 : 0.35,
+                    metalness: isMetallic ? 0.55 : 0.08
+                });
+                enhanceKoiMaterial(bodyMat, this.swimUniforms);
+
+                this.bodyMesh = new THREE.Mesh(koiSharedGeometries.body, bodyMat);
+                this.group.add(this.bodyMesh);
+
+                // Translucent flowing fins color-matched to variety
+                let finColor = 0xfff7f5;
+                if (this.variety === 'ogon') finColor = 0xfde047;
+                else if (this.variety === 'platinum') finColor = 0xf8fafc;
+                else if (this.variety === 'showa') finColor = 0xffedd5;
+
+                const finMat = new THREE.MeshStandardMaterial({
+                    color: finColor,
+                    roughness: 0.3,
+                    metalness: isMetallic ? 0.3 : 0.05,
+                    transparent: true,
+                    opacity: 0.78,
+                    side: THREE.DoubleSide
+                });
+                enhanceKoiMaterial(finMat, this.swimUniforms);
+
+                // Dorsal Fin
+                this.dorsalFin = new THREE.Mesh(koiSharedGeometries.dorsal, finMat);
+                this.dorsalFin.position.set(0, 0.18, -0.04);
+                this.group.add(this.dorsalFin);
+
+                // Flowing Tail Fin (attached at rear peduncle z = -0.68)
+                this.tailFin = new THREE.Mesh(koiSharedGeometries.tail, finMat);
+                this.tailFin.position.set(0, 0.01, -0.66);
+                this.group.add(this.tailFin);
+
+                // Left & Right Pectoral Fins
+                this.pecLeft = new THREE.Mesh(koiSharedGeometries.pecLeft, finMat);
+                this.pecLeft.position.set(-0.15, -0.07, 0.30);
+                this.group.add(this.pecLeft);
+
+                this.pecRight = new THREE.Mesh(koiSharedGeometries.pecRight, finMat);
+                this.pecRight.position.set(0.15, -0.07, 0.30);
+                this.group.add(this.pecRight);
+
+                // Ventral (pelvic) smaller fins
+                this.ventLeft = new THREE.Mesh(koiSharedGeometries.pecLeft, finMat);
+                this.ventLeft.scale.setScalar(0.58);
+                this.ventLeft.position.set(-0.09, -0.12, -0.10);
+                this.group.add(this.ventLeft);
+
+                this.ventRight = new THREE.Mesh(koiSharedGeometries.pecRight, finMat);
+                this.ventRight.scale.setScalar(0.58);
+                this.ventRight.position.set(0.09, -0.12, -0.10);
+                this.group.add(this.ventRight);
+
+                // 3D Eyes with dark pupils
+                const eyeWhiteMat = new THREE.MeshBasicMaterial({ color: 0xfef3c7 });
+                const pupilMat = new THREE.MeshBasicMaterial({ color: 0x090d16 });
+
+                const leftEye = new THREE.Mesh(koiSharedGeometries.eye, eyeWhiteMat);
+                leftEye.position.set(-0.125, 0.065, 0.52);
+                const leftPupil = new THREE.Mesh(koiSharedGeometries.pupil, pupilMat);
+                leftPupil.position.set(-0.014, 0.012, 0.01);
+                leftEye.add(leftPupil);
+                this.group.add(leftEye);
+
+                const rightEye = new THREE.Mesh(koiSharedGeometries.eye, eyeWhiteMat);
+                rightEye.position.set(0.125, 0.065, 0.52);
+                const rightPupil = new THREE.Mesh(koiSharedGeometries.pupil, pupilMat);
+                rightPupil.position.set(0.014, 0.012, 0.01);
+                rightEye.add(rightPupil);
+                this.group.add(rightEye);
+
+                this.scene.add(this.group);
+
+                // Soft projected shadow on the pond floor (y = -2.28) for strong depth perception
+                const shadowMat = new THREE.MeshBasicMaterial({
+                    map: koiTextures.shadow,
+                    transparent: true,
+                    opacity: 0.65,
+                    depthWrite: false
+                });
+                this.shadowMesh = new THREE.Mesh(koiSharedGeometries.shadow, shadowMat);
+                this.shadowMesh.position.set(this.position.x, -2.28, this.position.z);
+                this.scene.add(this.shadowMesh);
+            }
+
+            update(dt, allKoi, bounds, whirlpool, onSurfaceSplash) {
+                // 1. Handle air-to-water drop & dive entry
+                if (this.state === 'dropping') {
+                    const prevY = this.position.y;
+                    this.dropVelocityY -= 15.0 * dt;
+                    this.position.y += this.dropVelocityY * dt;
+                    this.position.x += Math.sin(this.heading) * 1.2 * dt;
+                    this.position.z += Math.cos(this.heading) * 1.2 * dt;
+
+                    // Crossed water surface plane (y = 0)
+                    if (prevY > 0 && this.position.y <= 0) {
+                        onSurfaceSplash(this.position.x, this.position.z, 1.35);
+                        this.state = 'diving';
+                        this.speed = this.baseSpeed * 2.1; // Energetic dive burst
+                    }
+                } else if (this.state === 'diving') {
+                    // Dive down to target submerged depth and level out smoothly
+                    this.position.y += (this.targetDepth - this.position.y) * 3.8 * dt;
+                    this.pitch += (0 - this.pitch) * 4.2 * dt;
+                    if (Math.abs(this.position.y - this.targetDepth) < 0.08) {
+                        this.state = 'swimming';
+                        this.pitch = 0;
+                    }
+                }
+
+                // 2. Autonomous Steering, Boundary Turning, Collision Avoidance & Whirlpool Current
+                if (this.state !== 'dropping') {
+                    this.wanderTimer -= dt;
+                    if (this.wanderTimer <= 0) {
+                        this.wanderTimer = 1.8 + Math.random() * 4.2;
+                        this.desiredHeading = this.heading + (Math.random() - 0.5) * 1.8;
+                        // Occasional graceful speed burst
+                        const burst = Math.random() < 0.28 ? 1.45 : 1.0;
+                        this.targetSpeed = (1.45 + Math.random() * 0.75) * burst;
+                    }
+
+                    const targetSpd = this.targetSpeed || this.baseSpeed;
+                    this.speed += (targetSpd - this.speed) * 2.2 * dt;
+
+                    let steerX = Math.sin(this.desiredHeading);
+                    let steerZ = Math.cos(this.desiredHeading);
+
+                    // Smoothly turn inward near screen/pond boundaries
+                    const margin = 2.6;
+                    const maxX = Math.max(3.5, bounds.halfW - margin);
+                    const maxZ = Math.max(3.5, bounds.halfH - margin);
+
+                    if (Math.abs(this.position.x) > maxX) {
+                        const pushInX = -Math.sign(this.position.x) * ((Math.abs(this.position.x) - maxX) / margin);
+                        steerX += pushInX * 3.2;
+                    }
+                    if (Math.abs(this.position.z) > maxZ) {
+                        const pushInZ = -Math.sign(this.position.z) * ((Math.abs(this.position.z) - maxZ) / margin);
+                        steerZ += pushInZ * 3.2;
+                    }
+
+                    // Avoid other koi smoothly
+                    const avoidRadius = 1.75;
+                    for (let i = 0; i < allKoi.length; i++) {
+                        const other = allKoi[i];
+                        if (other === this || other.state === 'dropping') continue;
+                        const dx = this.position.x - other.position.x;
+                        const dz = this.position.z - other.position.z;
+                        const distSq = dx * dx + dz * dz;
+                        if (distSq < avoidRadius * avoidRadius && distSq > 0.0001) {
+                            const dist = Math.sqrt(distSq);
+                            const strength = Math.pow((avoidRadius - dist) / avoidRadius, 1.5) * 2.8;
+                            steerX += (dx / dist) * strength;
+                            steerZ += (dz / dist) * strength;
+                        }
+                    }
+
+                    // Whirlpool current force (tangential swirl + inward pull)
+                    let whirlSpeedBoost = 0;
+                    if (whirlpool.active && whirlpool.strength > 0.05) {
+                        const dx = whirlpool.x - this.position.x;
+                        const dz = whirlpool.z - this.position.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz) + 0.001;
+                        const radius = 8.5;
+                        if (dist < radius) {
+                            const falloff = Math.pow(1.0 - dist / radius, 1.35) * whirlpool.strength;
+                            // Counter-clockwise tangential vector (-dz, dx)
+                            const tangX = -dz / dist;
+                            const tangZ = dx / dist;
+                            // Inward pull
+                            const pullX = (dx / dist) * 0.42;
+                            const pullZ = (dz / dist) * 0.42;
+
+                            steerX += (tangX * 3.6 + pullX * 2.2) * falloff;
+                            steerZ += (tangZ * 3.6 + pullZ * 2.2) * falloff;
+                            whirlSpeedBoost = falloff * 1.9;
+                        }
+                    }
+
+                    // Smoothly slerp heading angle
+                    const targetAngle = Math.atan2(steerX, steerZ);
+                    let diff = targetAngle - this.heading;
+                    while (diff > Math.PI) diff -= Math.PI * 2;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+
+                    const maxTurn = 3.4 * dt;
+                    const actualTurn = Math.max(-maxTurn, Math.min(maxTurn, diff * 2.6 * dt));
+                    this.heading += actualTurn;
+                    this.turnRate = THREE.MathUtils.lerp(this.turnRate, diff, 5.0 * dt);
+
+                    const effectiveSpeed = this.speed + whirlSpeedBoost;
+                    this.position.x += Math.sin(this.heading) * effectiveSpeed * dt;
+                    this.position.z += Math.cos(this.heading) * effectiveSpeed * dt;
+
+                    // Gentle vertical bobbing between depths
+                    if (this.state === 'swimming') {
+                        const bob = Math.sin(this.swimUniforms.uSwimPhase.value * 0.25) * 0.06;
+                        this.position.y += ((this.targetDepth + bob) - this.position.y) * 1.5 * dt;
+                    }
+                }
+
+                // 3. Update Spine S-Wave, Tail Sweep & Fin Rowing Animations
+                const swimFreq = 5.8 + this.speed * 3.4;
+                this.swimUniforms.uSwimPhase.value += swimFreq * dt;
+                this.swimUniforms.uSwimAmp.value = THREE.MathUtils.clamp(0.75 + this.speed * 0.28, 0.7, 1.6);
+                this.swimUniforms.uTurnBend.value = THREE.MathUtils.clamp(-this.turnRate * 0.35, -0.55, 0.55);
+
+                const phase = this.swimUniforms.uSwimPhase.value;
+
+                // Tail fin secondary follow-through oscillation
+                this.tailFin.rotation.y = Math.sin(phase - 2.3) * 0.36 * this.swimUniforms.uSwimAmp.value;
+                this.dorsalFin.rotation.z = Math.sin(phase - 1.1) * 0.14;
+
+                // Pectoral fins gentle feathering / rowing
+                const pecFlap = Math.sin(phase * 0.65) * 0.22;
+                this.pecLeft.rotation.z = 0.12 + pecFlap;
+                this.pecLeft.rotation.y = Math.cos(phase * 0.65) * 0.14;
+                this.pecRight.rotation.z = -0.12 - pecFlap;
+                this.pecRight.rotation.y = -Math.cos(phase * 0.65) * 0.14;
+
+                // Apply 3D transform to koi group
+                this.group.position.copy(this.position);
+                this.group.rotation.set(this.pitch, this.heading, -this.turnRate * 0.12, 'YXZ');
+
+                // Update floor shadow (offset slightly by sunlight direction and scaled by depth)
+                const heightAboveFloor = Math.max(0.2, this.position.y - (-2.28));
+                this.shadowMesh.position.set(
+                    this.position.x - heightAboveFloor * 0.22,
+                    -2.27,
+                    this.position.z - heightAboveFloor * 0.22
+                );
+                this.shadowMesh.rotation.y = this.heading;
+                const shadowScale = this.scale * (0.88 + heightAboveFloor * 0.12);
+                this.shadowMesh.scale.setScalar(shadowScale);
+                this.shadowMesh.material.opacity = THREE.MathUtils.clamp(0.62 - heightAboveFloor * 0.16, 0.12, 0.58);
+            }
+
+            dispose() {
+                this.scene.remove(this.group);
+                this.scene.remove(this.shadowMesh);
+                this.bodyMesh.material.dispose();
+                this.tailFin.material.dispose();
+                this.shadowMesh.material.dispose();
+            }
+        }
+    </script>
+
+    <script>
+        /***********************************************************************
+         * 5. SPLASH DROPLETS, EXPANDING RINGS, RAIN & WHIRLPOOL PARTICLES
+         ***********************************************************************/
+        class SplashAndRainManager {
+            constructor(scene) {
+                this.scene = scene;
+
+                // 1. 3D Splash Droplets Pool (arcs out of water on koi landing & plunges back)
+                this.maxDroplets = 180;
+                this.dropletData = [];
+                const dropGeom = new THREE.BufferGeometry();
+                const dropPositions = new Float32Array(this.maxDroplets * 3);
+                for (let i = 0; i < this.maxDroplets; i++) {
+                    dropPositions[i * 3 + 1] = -999;
+                    this.dropletData.push({
+                        active: false,
+                        pos: new THREE.Vector3(0, -999, 0),
+                        vel: new THREE.Vector3(),
+                        life: 0
+                    });
+                }
+                dropGeom.setAttribute('position', new THREE.BufferAttribute(dropPositions, 3));
+
+                // Soft circular glowing water droplet sprite
+                const dCanvas = document.createElement('canvas');
+                dCanvas.width = 64;
+                dCanvas.height = 64;
+                const dCtx = dCanvas.getContext('2d');
+                const dGrad = dCtx.createRadialGradient(32, 32, 2, 32, 32, 30);
+                dGrad.addColorStop(0, 'rgba(255, 255, 255, 1.0)');
+                dGrad.addColorStop(0.45, 'rgba(165, 243, 252, 0.85)');
+                dGrad.addColorStop(1, 'rgba(6, 182, 212, 0.0)');
+                dCtx.fillStyle = dGrad;
+                dCtx.fillRect(0, 0, 64, 64);
+
+                const dropMat = new THREE.PointsMaterial({
+                    map: new THREE.CanvasTexture(dCanvas),
+                    size: 0.34,
+                    transparent: true,
+                    opacity: 0.92,
+                    depthWrite: false,
+                    blending: THREE.AdditiveBlending
+                });
+                this.dropletPoints = new THREE.Points(dropGeom, dropMat);
+                this.scene.add(this.dropletPoints);
+
+                // 2. Crisp Surface Foam Ring Meshes for Koi Landings
+                this.rings = [];
+                const ringGeom = new THREE.RingGeometry(0.18, 0.28, 40);
+                ringGeom.rotateX(-Math.PI / 2);
+                this.ringBaseGeom = ringGeom;
+
+                // 3. Rain Streaks System (falling 3D streaks when Rain is enabled)
+                this.rainCount = 220;
+                const rainGeom = new THREE.BufferGeometry();
+                const rainPos = new Float32Array(this.rainCount * 6); // 2 vertices per streak line
+                this.rainDrops = [];
+                for (let i = 0; i < this.rainCount; i++) {
+                    const x = (Math.random() - 0.5) * 32;
+                    const y = Math.random() * 18;
+                    const z = (Math.random() - 0.5) * 22;
+                    this.rainDrops.push({ x, y, z, speed: 22 + Math.random() * 8 });
+                }
+                rainGeom.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+                const rainMat = new THREE.LineBasicMaterial({
+                    color: 0xcffafe,
+                    transparent: true,
+                    opacity: 0.42,
+                    depthWrite: false
+                });
+                this.rainLines = new THREE.LineSegments(rainGeom, rainMat);
+                this.rainLines.visible = false;
+                this.scene.add(this.rainLines);
+            }
+
+            spawnLandingSplash(x, z, intensity = 1.0) {
+                // Spawn 28 3D water droplets arcing outward and upward
+                const count = Math.floor(26 * intensity);
+                let spawned = 0;
+                for (let i = 0; i < this.maxDroplets && spawned < count; i++) {
+                    const d = this.dropletData[i];
+                    if (!d.active) {
+                        d.active = true;
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 0.08 + Math.random() * 0.25;
+                        d.pos.set(x + Math.cos(angle) * radius, 0.04, z + Math.sin(angle) * radius);
+                        const outSpeed = (1.2 + Math.random() * 2.8) * intensity;
+                        const upSpeed = (3.2 + Math.random() * 3.8) * intensity;
+                        d.vel.set(Math.cos(angle) * outSpeed, upSpeed, Math.sin(angle) * outSpeed);
+                        d.life = 1.0;
+                        spawned++;
+                    }
+                }
+
+                // Spawn dual expanding surface rings
+                for (let r = 0; r < 2; r++) {
+                    const mat = new THREE.MeshBasicMaterial({
+                        color: 0xe0f2fe,
+                        transparent: true,
+                        opacity: 0.75 - r * 0.2,
+                        side: THREE.DoubleSide,
+                        depthWrite: false
+                    });
+                    const mesh = new THREE.Mesh(this.ringBaseGeom, mat);
+                    mesh.position.set(x, 0.03, z);
+                    const startScale = 0.4 + r * 0.35;
+                    mesh.scale.setScalar(startScale);
+                    this.scene.add(mesh);
+                    this.rings.push({
+                        mesh,
+                        age: 0,
+                        maxAge: 1.35 + r * 0.35,
+                        speed: 4.2 - r * 0.8
+                    });
+                }
+            }
+
+            update(dt, rainActive, bounds, addRippleCallback) {
+                // Update 3D splash droplets
+                const posAttr = this.dropletPoints.geometry.attributes.position;
+                for (let i = 0; i < this.maxDroplets; i++) {
+                    const d = this.dropletData[i];
+                    if (d.active) {
+                        d.vel.y -= 13.5 * dt; // Gravity
+                        d.pos.addScaledVector(d.vel, dt);
+                        if (d.pos.y <= 0 && d.vel.y < 0) {
+                            // Droplet hits water surface: trigger tiny secondary micro-ripple
+                            if (Math.random() < 0.22) {
+                                addRippleCallback(d.pos.x, d.pos.z, 0.06);
+                            }
+                            d.active = false;
+                            d.pos.y = -999;
+                        }
+                        posAttr.setXYZ(i, d.pos.x, d.pos.y, d.pos.z);
+                    }
+                }
+                posAttr.needsUpdate = true;
+
+                // Update expanding surface foam rings
+                for (let i = this.rings.length - 1; i >= 0; i--) {
+                    const r = this.rings[i];
+                    r.age += dt;
+                    if (r.age >= r.maxAge) {
+                        this.scene.remove(r.mesh);
+                        r.mesh.material.dispose();
+                        this.rings.splice(i, 1);
+                    } else {
+                        const progress = r.age / r.maxAge;
+                        const s = 0.5 + r.age * r.speed;
+                        r.mesh.scale.setScalar(s);
+                        r.mesh.material.opacity = (1.0 - Math.pow(progress, 0.75)) * 0.7;
+                    }
+                }
+
+                // Update 3D Rain streaks & surface raindrops
+                this.rainLines.visible = rainActive;
+                if (rainActive) {
+                    const rAttr = this.rainLines.geometry.attributes.position;
+                    for (let i = 0; i < this.rainCount; i++) {
+                        const drop = this.rainDrops[i];
+                        drop.y -= drop.speed * dt;
+                        drop.x -= 1.8 * dt; // Slight wind slant
+                        if (drop.y <= 0) {
+                            // Raindrop hits pond surface
+                            if (Math.random() < 0.14) {
+                                addRippleCallback(drop.x, drop.z, 0.075);
+                                if (Math.random() < 0.08) {
+                                    audioEngine.playDropletChime(0.12);
+                                }
+                            }
+                            drop.y = 14 + Math.random() * 5;
+                            drop.x = (Math.random() - 0.5) * bounds.halfW * 2.2;
+                            drop.z = (Math.random() - 0.5) * bounds.halfH * 2.2;
+                        }
+                        // Line start & end
+                        rAttr.setXYZ(i * 2, drop.x, drop.y, drop.z);
+                        rAttr.setXYZ(i * 2 + 1, drop.x + 0.08, drop.y + 0.85, drop.z);
+                    }
+                    rAttr.needsUpdate = true;
+                }
+            }
+
+            clearTransient() {
+                for (let i = 0; i < this.maxDroplets; i++) {
+                    this.dropletData[i].active = false;
+                    this.dropletData[i].pos.y = -999;
+                }
+                this.dropletPoints.geometry.attributes.position.needsUpdate = true;
+                for (let i = this.rings.length - 1; i >= 0; i--) {
+                    this.scene.remove(this.rings[i].mesh);
+                    this.rings[i].mesh.material.dispose();
+                }
+                this.rings.length = 0;
+            }
+        }
+    </script>
+
+    <script>
+        /***********************************************************************
+         * 6. MAIN THREE.JS POND SCENE & INTERACTION CONTROLLER
+         ***********************************************************************/
+        window.onload = function () {
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x032229);
+
+            // Top-down perspective camera with convincing depth cues
+            const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 100);
+            camera.position.set(0, 18.5, 0.01);
+            camera.lookAt(0, 0, 0);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Warm overhead sunlight + turquoise underwater ambient fill
+            const ambientLight = new THREE.AmbientLight(0xb2f5ea, 0.85);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.25);
+            sunLight.position.set(6, 22, 8);
+            scene.add(sunLight);
+
+            // Shared ripple circular buffer (vec4: x, z, startTime, amplitude)
+            const rippleUniformArray = [];
+            for (let i = 0; i < MAX_RIPPLES; i++) {
+                rippleUniformArray.push(new THREE.Vector4(0, 0, -100, 0));
+            }
+            let rippleCursor = 0;
+            let elapsedTime = 0;
+
+            function addRipple(x, z, amplitude = 0.14) {
+                rippleUniformArray[rippleCursor].set(x, z, elapsedTime, amplitude);
+                rippleCursor = (rippleCursor + 1) % MAX_RIPPLES;
+            }
+
+            // Movable Whirlpool State
+            const whirlpool = {
+                active: false,
+                x: 0,
+                z: 0,
+                strength: 0,
+                dragging: false
+            };
+            const whirlpoolUniform = new THREE.Vector3(0, 0, 0);
+
+            // Pond Floor Mesh (y = -2.3)
+            const floorGeom = new THREE.PlaneGeometry(60, 45, 1, 1);
+            floorGeom.rotateX(-Math.PI / 2);
+            const floorMat = new THREE.ShaderMaterial({
+                vertexShader: floorVertexShader,
+                fragmentShader: floorFragmentShader,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uRipples: { value: rippleUniformArray },
+                    uWhirlpool: { value: whirlpoolUniform }
+                }
+            });
+            const floorMesh = new THREE.Mesh(floorGeom, floorMat);
+            floorMesh.position.y = -2.3;
+            scene.add(floorMesh);
+
+            // Water Surface Mesh (y = 0.0) with high vertex density for smooth ripples & depressions
+            const waterGeom = new THREE.PlaneGeometry(46, 34, 150, 110);
+            waterGeom.rotateX(-Math.PI / 2);
+            const waterMat = new THREE.ShaderMaterial({
+                vertexShader: waterVertexShader,
+                fragmentShader: waterFragmentShader,
+                transparent: true,
+                depthWrite: false,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uRipples: { value: rippleUniformArray },
+                    uWhirlpool: { value: whirlpoolUniform },
+                    uCameraPos: { value: camera.position }
+                }
+            });
+            const waterMesh = new THREE.Mesh(waterGeom, waterMat);
+            waterMesh.position.y = 0;
+            scene.add(waterMesh);
+
+            // Subtle glowing ring indicator around the movable whirlpool center
+            const whirlRingGeom = new THREE.RingGeometry(0.45, 0.58, 48);
+            whirlRingGeom.rotateX(-Math.PI / 2);
+            const whirlRingMat = new THREE.MeshBasicMaterial({
+                color: 0xa5f3fc,
+                transparent: true,
+                opacity: 0.0,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            const whirlRingMesh = new THREE.Mesh(whirlRingGeom, whirlRingMat);
+            whirlRingMesh.position.y = 0.04;
+            scene.add(whirlRingMesh);
+
+            // Initialize shared Koi 3D geometry & textures
+            initSharedKoiAssets();
+            const splashManager = new SplashAndRainManager(scene);
+
+            // Compute visible pond bounds on water plane (y = 0)
+            const pondBounds = { halfW: 10, halfH: 7 };
+            function updatePondBounds() {
+                const vFOV = THREE.MathUtils.degToRad(camera.fov);
+                const height = 2 * Math.tan(vFOV / 2) * camera.position.y;
+                const width = height * camera.aspect;
+                pondBounds.halfH = height * 0.5;
+                pondBounds.halfW = width * 0.5;
+            }
+            updatePondBounds();
+
+            // Active Koi List
+            const koiList = [];
+            const fishCountBadge = document.getElementById('fish-count-badge');
+
+            function updateFishCountUI() {
+                fishCountBadge.textContent = `${koiList.length} ${koiList.length === 1 ? 'Koi' : 'Koi'}`;
+            }
+
+            // Trigger landing splash (visual + depression + ripples + audio)
+            function handleKoiSurfaceSplash(x, z, intensity = 1.2) {
+                addRipple(x, z, 0.36 * intensity);
+                splashManager.spawnLandingSplash(x, z, intensity);
+                audioEngine.playLandingSplash(intensity);
+            }
+
+            function spawnKoi(variety, x, z, isInitial = false) {
+                // Cap maximum fish at 55 for silky-smooth performance
+                if (koiList.length >= 55) {
+                    const oldest = koiList.shift();
+                    oldest.dispose();
+                }
+                const koi = new KoiFish(variety, scene, x, z, isInitial);
+                koiList.push(koi);
+                updateFishCountUI();
+                return koi;
+            }
+
+            // Populate initial serene sanctuary with 8 Koi (2 of each variety)
+            const initialVarieties = ['kohaku', 'showa', 'ogon', 'platinum', 'kohaku', 'showa', 'ogon', 'platinum'];
+            initialVarieties.forEach((v, idx) => {
+                const angle = (idx / initialVarieties.length) * Math.PI * 2;
+                const r = 2.2 + (idx % 2) * 2.0;
+                spawnKoi(v, Math.cos(angle) * r, Math.sin(angle) * r, true);
+            });
+
+            /*******************************************************************
+             * 7. RAYCASTING, WATER RIPPLE DRAGGING & WHIRLPOOL MOVEMENT
+             *******************************************************************/
+            const raycaster = new THREE.Raycaster();
+            const pointerNDC = new THREE.Vector2();
+            const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersectPoint = new THREE.Vector3();
+
+            function screenToWaterXZ(clientX, clientY) {
+                pointerNDC.x = (clientX / window.innerWidth) * 2 - 1;
+                pointerNDC.y = -(clientY / window.innerHeight) * 2 + 1;
+                raycaster.setFromCamera(pointerNDC, camera);
+                raycaster.ray.intersectPlane(waterPlane, intersectPoint);
+                return intersectPoint;
+            }
+
+            let isPointerDownOnWater = false;
+            let lastRipplePos = new THREE.Vector2(999, 999);
+
+            const canvasEl = renderer.domElement;
+
+            canvasEl.addEventListener('pointerdown', (e) => {
+                const pt = screenToWaterXZ(e.clientX, e.clientY);
+                if (!pt) return;
+
+                // Check if user grabbed the active whirlpool to move it
+                if (whirlpool.active) {
+                    const distToWhirl = Math.hypot(pt.x - whirlpool.x, pt.z - whirlpool.z);
+                    if (distToWhirl < 2.2) {
+                        whirlpool.dragging = true;
+                        isPointerDownOnWater = true;
+                        return;
+                    }
+                }
+
+                isPointerDownOnWater = true;
+                addRipple(pt.x, pt.z, 0.18);
+                lastRipplePos.set(pt.x, pt.z);
+                audioEngine.playSwimSwish(0.35);
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (draggingVariety) {
+                    updateCardDrag(e.clientX, e.clientY);
+                    return;
+                }
+                if (!isPointerDownOnWater) return;
+                const pt = screenToWaterXZ(e.clientX, e.clientY);
+                if (!pt) return;
+
+                if (whirlpool.dragging) {
+                    whirlpool.x = THREE.MathUtils.clamp(pt.x, -pondBounds.halfW * 0.85, pondBounds.halfW * 0.85);
+                    whirlpool.z = THREE.MathUtils.clamp(pt.z, -pondBounds.halfH * 0.85, pondBounds.halfH * 0.85);
+                    return;
+                }
+
+                const moveDist = Math.hypot(pt.x - lastRipplePos.x, pt.z - lastRipplePos.y);
+                if (moveDist > 0.42) {
+                    addRipple(pt.x, pt.z, 0.14);
+                    lastRipplePos.set(pt.x, pt.z);
+                    if (Math.random() < 0.25) {
+                        audioEngine.playSwimSwish(0.2);
+                    }
+                }
+            });
+
+            window.addEventListener('pointerup', (e) => {
+                if (draggingVariety) {
+                    finishCardDrag(e.clientX, e.clientY);
+                }
+                isPointerDownOnWater = false;
+                whirlpool.dragging = false;
+            });
+
+            /*******************************************************************
+             * 8. KOI CARD CLICK-TO-RELEASE & DRAG-AND-DROP PLACEMENT
+             *******************************************************************/
+            const dragGhost = document.getElementById('drag-ghost');
+            let draggingVariety = null;
+            let cardStartPos = { x: 0, y: 0 };
+            let isCardDraggingMoved = false;
+
+            document.querySelectorAll('.koi-card').forEach(card => {
+                card.addEventListener('pointerdown', (e) => {
+                    e.stopPropagation();
+                    const variety = card.getAttribute('data-variety');
+                    draggingVariety = variety;
+                    cardStartPos = { x: e.clientX, y: e.clientY };
+                    isCardDraggingMoved = false;
+
+                    // Clone the card's SVG preview into the floating ghost
+                    const svgEl = card.querySelector('svg');
+                    if (svgEl) {
+                        dragGhost.innerHTML = svgEl.outerHTML;
+                    }
+                    dragGhost.style.left = `${e.clientX}px`;
+                    dragGhost.style.top = `${e.clientY}px`;
+                });
+            });
+
+            function updateCardDrag(clientX, clientY) {
+                const dist = Math.hypot(clientX - cardStartPos.x, clientY - cardStartPos.y);
+                if (dist > 8) {
+                    isCardDraggingMoved = true;
+                    dragGhost.classList.add('visible');
+                }
+                dragGhost.style.left = `${clientX}px`;
+                dragGhost.style.top = `${clientY}px`;
+
+                // Create subtle preview ripple on water underneath dragged fish
+                if (isCardDraggingMoved) {
+                    const pt = screenToWaterXZ(clientX, clientY);
+                    if (pt && Math.hypot(pt.x - lastRipplePos.x, pt.z - lastRipplePos.y) > 0.75) {
+                        addRipple(pt.x, pt.z, 0.06);
+                        lastRipplePos.set(pt.x, pt.z);
+                    }
+                }
+            }
+
+            function finishCardDrag(clientX, clientY) {
+                const variety = draggingVariety;
+                draggingVariety = null;
+                dragGhost.classList.remove('visible');
+
+                if (!variety) return;
+
+                if (isCardDraggingMoved) {
+                    // User dragged the koi out of the card: drop at exact pointer location
+                    const pt = screenToWaterXZ(clientX, clientY);
+                    if (pt) {
+                        const clampedX = THREE.MathUtils.clamp(pt.x, -pondBounds.halfW * 0.85, pondBounds.halfW * 0.85);
+                        const clampedZ = THREE.MathUtils.clamp(pt.z, -pondBounds.halfH * 0.85, pondBounds.halfH * 0.85);
+                        spawnKoi(variety, clampedX, clampedZ, false);
+                    }
+                } else {
+                    // User clicked the card: release into a scenic central region of the pond
+                    const rx = (Math.random() - 0.5) * pondBounds.halfW * 0.9;
+                    const rz = (Math.random() - 0.5) * pondBounds.halfH * 0.75;
+                    spawnKoi(variety, rx, rz, false);
+                }
+            }
+
+            /*******************************************************************
+             * 9. UI TOOLBAR CONTROLS (Sound, Rain, Whirlpool, Calm, Clear, Hide UI)
+             *******************************************************************/
+            const btnSound = document.getElementById('btn-sound');
+            const iconSoundOff = document.getElementById('icon-sound-off');
+            const iconSoundOn = document.getElementById('icon-sound-on');
+            const labelSound = document.getElementById('label-sound');
+
+            const btnRain = document.getElementById('btn-rain');
+            const btnWhirlpool = document.getElementById('btn-whirlpool');
+            const btnCalm = document.getElementById('btn-calm');
+            const btnClear = document.getElementById('btn-clear');
+            const btnHideUI = document.getElementById('btn-hide-ui');
+            const btnRestoreUI = document.getElementById('btn-restore-ui');
+            const topUI = document.getElementById('top-ui');
+            const bottomUI = document.getElementById('bottom-ui');
+            const statusToast = document.getElementById('status-toast');
+            const statusToastText = document.getElementById('status-toast-text');
+
+            let rainActive = false;
+            let toastTimeout = null;
+
+            function showToast(msg) {
+                statusToastText.textContent = msg;
+                statusToast.style.opacity = '1';
+                if (toastTimeout) clearTimeout(toastTimeout);
+                toastTimeout = setTimeout(() => {
+                    statusToast.style.opacity = '0';
+                }, 3200);
+            }
+
+            btnSound.addEventListener('click', () => {
+                const isOn = audioEngine.toggleSound();
+                btnSound.classList.toggle('active', isOn);
+                iconSoundOff.classList.toggle('hidden', isOn);
+                iconSoundOn.classList.toggle('hidden', !isOn);
+                labelSound.textContent = isOn ? 'Sound On' : 'Sound Off';
+                if (isOn) {
+                    audioEngine.setRainActive(rainActive);
+                    audioEngine.setWhirlpoolActive(whirlpool.active);
+                }
+            });
+
+            btnRain.addEventListener('click', () => {
+                rainActive = !rainActive;
+                btnRain.classList.toggle('active', rainActive);
+                audioEngine.setRainActive(rainActive);
+                if (rainActive) showToast('Gentle rain shower started');
+            });
+
+            btnWhirlpool.addEventListener('click', () => {
+                whirlpool.active = !whirlpool.active;
+                btnWhirlpool.classList.toggle('active', whirlpool.active);
+                audioEngine.setWhirlpoolActive(whirlpool.active);
+                if (whirlpool.active) {
+                    showToast('Whirlpool active — drag its center to move the current');
+                }
+            });
+
+            btnCalm.addEventListener('click', () => {
+                // Stop rain, stop whirlpool, and clear all ripples/droplets
+                rainActive = false;
+                whirlpool.active = false;
+                whirlpool.strength = 0;
+                btnRain.classList.remove('active');
+                btnWhirlpool.classList.remove('active');
+                audioEngine.setRainActive(false);
+                audioEngine.setWhirlpoolActive(false);
+
+                for (let i = 0; i < MAX_RIPPLES; i++) {
+                    rippleUniformArray[i].set(0, 0, -100, 0);
+                }
+                splashManager.clearTransient();
+                // Calm fish speeds down to peaceful cruise
+                koiList.forEach(k => {
+                    k.targetSpeed = 1.45;
+                    k.speed = 1.45;
+                });
+                showToast('Water calmed to stillness');
+            });
+
+            btnClear.addEventListener('click', () => {
+                while (koiList.length > 0) {
+                    const k = koiList.pop();
+                    k.dispose();
+                }
+                updateFishCountUI();
+                showToast('Pond cleared — select or drag a Koi below to release');
+            });
+
+            // Hide / Restore UI for clean screen recording
+            function setUIHidden(hidden) {
+                topUI.classList.toggle('ui-hidden-top', hidden);
+                bottomUI.classList.toggle('ui-hidden', hidden);
+                if (hidden) {
+                    btnRestoreUI.classList.remove('opacity-0', 'pointer-events-none');
+                    btnRestoreUI.classList.add('opacity-60', 'pointer-events-auto');
+                    showToast('Interface hidden for recording • Press Esc or Show UI to restore');
+                } else {
+                    btnRestoreUI.classList.add('opacity-0', 'pointer-events-none');
+                    btnRestoreUI.classList.remove('opacity-60', 'pointer-events-auto');
+                }
+            }
+
+            btnHideUI.addEventListener('click', () => setUIHidden(true));
+            btnRestoreUI.addEventListener('click', () => setUIHidden(false));
+            window.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') setUIHidden(false);
+            });
+
+            // Pause Web Audio automatically when browser tab is hidden
+            document.addEventListener('visibilitychange', () => {
+                audioEngine.setTabHidden(document.hidden);
+            });
+
+            // Responsive Resize Handler
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                updatePondBounds();
+            });
+
+            /*******************************************************************
+             * 10. MAIN ANIMATION LOOP
+             *******************************************************************/
+            const clock = new THREE.Clock();
+
+            function animate() {
+                requestAnimationFrame(animate);
+
+                const dt = Math.min(clock.getDelta(), 0.05);
+                elapsedTime += dt;
+
+                // Smoothly ramp whirlpool strength & update ring visual
+                const targetWhirl = whirlpool.active ? 1.0 : 0.0;
+                whirlpool.strength += (targetWhirl - whirlpool.strength) * 3.5 * dt;
+                whirlpoolUniform.set(whirlpool.x, whirlpool.z, whirlpool.strength);
+
+                whirlRingMesh.position.set(whirlpool.x, 0.03, whirlpool.z);
+                whirlRingMesh.rotation.z -= 3.2 * dt;
+                whirlRingMesh.scale.setScalar(0.85 + Math.sin(elapsedTime * 4.0) * 0.1);
+                whirlRingMat.opacity = whirlpool.strength * 0.42;
+
+                // Update all Koi fish
+                for (let i = 0; i < koiList.length; i++) {
+                    koiList[i].update(dt, koiList, pondBounds, whirlpool, handleKoiSurfaceSplash);
+                }
+
+                // Update 3D splash droplets, rings, and rain shower
+                splashManager.update(dt, rainActive, pondBounds, addRipple);
+
+                // Update shader time uniforms
+                floorMat.uniforms.uTime.value = elapsedTime;
+                waterMat.uniforms.uTime.value = elapsedTime;
+
+                renderer.render(scene, camera);
+            }
+
+            animate();
+        };
+    </script>
+</body>
+</html>
